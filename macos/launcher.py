@@ -1,6 +1,6 @@
 """head3Dv1.app のエントリポイント。
 
-元リポジトリ (upstream/) のコードには一切手を入れず、起動前に次の 2 点だけを
+元リポジトリ (upstream/) のコードには一切手を入れず、起動前に次の 3 点だけを
 macOS アプリ向けに差し替えてから ``app.main.main()`` を呼ぶ。
 
 1. 書込先
@@ -16,7 +16,12 @@ macOS アプリ向けに差し替えてから ``app.main.main()`` を呼ぶ。
    元コードは stderr にしかログを出さず、Finder から起動すると何も残らない。
    root logger に先にファイルハンドラを付けておく (以降の basicConfig は no-op)。
 
-``--self-test`` はビルドしたバンドルの検証用 (build.sh / CI から呼ぶ)。
+3. メインウィンドウ
+   ``app.main`` が作るウィンドウを ``mac_window.MacMainWindow`` (元の MainWindow の
+   サブクラス) に替える。小さい画面でもはみ出さないようにし、アプリメニューに
+   「アップデートを確認…」を足す。
+
+``--self-test`` / ``--self-test-update`` はビルドしたバンドルの検証用 (build.sh / CI から呼ぶ)。
 """
 from __future__ import annotations
 
@@ -31,11 +36,11 @@ import sys
 import tempfile
 from pathlib import Path
 
-APP_ID = "head3Dv1"
+from appinfo import APP_ID, FROZEN, build_info, log_dir
+
 LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 LOG_DATEFMT = "%H:%M:%S"
 
-FROZEN = getattr(sys, "frozen", False)
 HERE = Path(__file__).resolve().parent
 
 if not FROZEN:
@@ -54,10 +59,6 @@ def default_data_dir() -> Path:
     if env:
         return Path(env).expanduser()
     return Path.home() / "Library" / "Application Support" / APP_ID
-
-
-def log_dir() -> Path:
-    return Path.home() / "Library" / "Logs" / APP_ID
 
 
 def configure_paths(data_dir: Path) -> Path:
@@ -109,20 +110,6 @@ def configure_logging() -> Path:
 
     sys.excepthook = excepthook
     return path
-
-
-def build_info() -> dict:
-    """Info.plist (frozen 時) から版数と元コードのコミットを読む。"""
-    if not FROZEN:
-        return {"version": "dev", "upstream": "working tree"}
-    plist = Path(sys.executable).resolve().parent.parent / "Info.plist"
-    try:
-        with open(plist, "rb") as fp:
-            info = plistlib.load(fp)
-    except OSError:
-        return {"version": "?", "upstream": "?"}
-    return {"version": info.get("CFBundleShortVersionString", "?"),
-            "upstream": info.get("Head3DUpstreamCommit", "?")}
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +180,8 @@ def _gui_self_test():
     from vtkmodules.util import numpy_support
 
     from app import config
-    from app.ui.main_window import DARK_QSS, MainWindow
+    from app.ui.main_window import DARK_QSS
+    from mac_window import FlowLayout, MacMainWindow
 
     QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts, True)
     qapp = QtWidgets.QApplication([sys.argv[0]])
@@ -201,11 +189,27 @@ def _gui_self_test():
     qapp.setStyleSheet(DARK_QSS)
     _check(qapp.platformName() != "", f"Qt プラットフォーム: {qapp.platformName()}")
 
-    window = MainWindow()
+    window = MacMainWindow()
     window.show()
     window.viewer3d.initialize()
     for _ in range(20):
         qapp.processEvents()
+
+    bar = window.clip_check.parentWidget().parentWidget()
+    _check(isinstance(bar.layout(), FlowLayout), "3D ビューのツールバーが折り返し可能")
+    min_width = window.minimumSizeHint().width()
+    _check(min_width <= 1100, f"ウィンドウの最小幅 {min_width}px (13 インチの画面に収まる)")
+    avail = (window.screen() or qapp.primaryScreen()).availableGeometry()
+    frame = window.frameGeometry()
+    # 最小幅より狭い画面 (CI の仮想ディスプレイなど) では最小幅までは許す
+    _check(frame.width() <= max(avail.width(), min_width)
+           and frame.height() <= avail.height(),
+           f"ウィンドウが画面に収まる ({frame.width()}x{frame.height()} / "
+           f"画面 {avail.width()}x{avail.height()})")
+    titles = [a.text() for m in window.menuBar().findChildren(QtWidgets.QMenu)
+              for a in m.actions()]
+    _check("アップデートを確認…" in titles and "head3Dv1 について" in titles,
+           "メニューに「head3Dv1 について」「アップデートを確認…」がある")
 
     render_window = window.viewer3d.interactor.GetRenderWindow()
     render_window.Render()
@@ -224,6 +228,60 @@ def _gui_self_test():
     _check(True, "メインウィンドウを開いて閉じた")
 
 
+def update_self_test(dmg: Path | None) -> int:
+    """GitHub への TLS 接続と、DMG からの入れ替え一式を確かめる (CI 用)。
+
+    入れ替えは実行中の .app ではなく一時フォルダに複製したものに対して行う。
+    """
+    import ssl
+    import subprocess
+
+    import updater
+
+    version = build_info()["version"]
+    try:
+        release = updater.fetch_latest(version)
+        _check(True, f"GitHub の最新リリースを取得: {release.tag}")
+    except updater.NoRelease:
+        _check(True, "GitHub に接続できた (公開リリースはまだ無い)")
+    except updater.UpdateError as exc:
+        reason = getattr(exc.__cause__, "reason", exc.__cause__)
+        _check(not isinstance(reason, ssl.SSLError), f"TLS 証明書の検証: {reason}")
+        log.warning("GitHub に接続できませんでした (ネットワークの問題として続行): %s", exc)
+
+    if dmg is None:
+        log.info("アップデートのセルフテスト成功")
+        return 0
+    app = updater.running_app()
+    _check(app is not None, f"実行中の .app: {app}")
+    work = Path(tempfile.mkdtemp(prefix="head3Dv1-update-test-"))
+    try:
+        target = work / "Applications" / "head3Dv1.app"
+        target.parent.mkdir()
+        subprocess.run(["ditto", str(app), str(target)], check=True)
+        _check(updater.install_problem(target) is None, "入れ替え先に書き込める")
+        staged = updater.stage_from_dmg(dmg, target, version)
+        _check(staged.is_dir(), f"DMG を展開して検証: {staged.name}")
+        waiter = subprocess.Popen(["sleep", "1"])
+        swap = updater.schedule_swap(staged, target, relaunch=False,
+                                     log_file=work / "update.log", pid=waiter.pid)
+        waiter.wait()
+        swap.wait(timeout=120)
+        _check(swap.returncode == 0, "旧版の終了を待ってから入れ替えた")
+        leftovers = [p.name for p in target.parent.iterdir() if p != target]
+        _check(not leftovers, f"一時ファイルが残っていない {leftovers}")
+        with open(target / "Contents" / "Info.plist", "rb") as fp:
+            got = plistlib.load(fp)["CFBundleShortVersionString"]
+        _check(got == version, f"入れ替え後のバージョン: {got}")
+        subprocess.run(["codesign", "--verify", "--deep", "--strict", str(target)],
+                       check=True)
+        _check(True, "入れ替え後の署名が有効")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    log.info("アップデートのセルフテスト成功")
+    return 0
+
+
 # ---------------------------------------------------------------------------
 def parse_args(argv):
     parser = argparse.ArgumentParser(prog=APP_ID, add_help=True)
@@ -233,6 +291,10 @@ def parse_args(argv):
                         help="--self-test で読込・STL 書出しまで試す DICOM フォルダ")
     parser.add_argument("--no-gui", action="store_true",
                         help="--self-test でウィンドウを開かない")
+    parser.add_argument("--self-test-update", action="store_true",
+                        help="アップデート機能の検証を行って終了する")
+    parser.add_argument("--dmg", type=Path,
+                        help="--self-test-update で入れ替えを試す DMG")
     # macOS が付ける -psn_0_xxxx などは Qt 側に任せる
     args, _ = parser.parse_known_args(argv)
     return args
@@ -243,7 +305,7 @@ def main(argv=None) -> int:
     args = parse_args(argv[1:])
 
     temp_data = None
-    if args.self_test:
+    if args.self_test or args.self_test_update:
         # ユーザーの設定・セッションに触れない
         os.environ["HEAD3DV1_NO_RESTORE"] = "1"
         os.environ["HEAD3DV1_SETTINGS_SCOPE"] = "selftest"
@@ -257,6 +319,13 @@ def main(argv=None) -> int:
     log.info("head3Dv1 %s (upstream %s) data=%s log=%s",
              info["version"], info["upstream"], data_dir, log_path)
 
+    if args.self_test_update:
+        try:
+            return update_self_test(args.dmg)
+        except Exception:                               # noqa: BLE001
+            log.exception("アップデートのセルフテスト失敗")
+            return 1
+
     if args.self_test:
         try:
             return self_test(data_dir, args.dicom, gui=not args.no_gui)
@@ -267,8 +336,11 @@ def main(argv=None) -> int:
             if temp_data is not None:
                 shutil.rmtree(temp_data, ignore_errors=True)
 
-    from app.main import main as app_main
-    return app_main(argv)
+    # 元コードの起動処理はそのまま使い、作るウィンドウだけ Mac 版に差し替える
+    import app.main as app_main
+    from mac_window import MacMainWindow
+    app_main.MainWindow = MacMainWindow
+    return app_main.main(argv)
 
 
 if __name__ == "__main__":

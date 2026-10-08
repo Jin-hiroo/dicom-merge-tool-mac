@@ -1,0 +1,5 @@
+# ビルド専用の依存。アプリ本体の依存は upstream/requirements.txt を使う。
+pyinstaller>=6.10,<7
+pyinstaller-hooks-contrib>=2024.8
+Pillow>=10          # アイコン生成 (pydicom の JPEG 展開にも使われる)
+pytest>=8.0

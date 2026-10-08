@@ -1,0 +1,28 @@
+# --- ビルド ---
+.venv-build/
+.venv/
+build/
+dist/
+*.dmg
+
+# --- 患者データ・作業データ (絶対にコミットしない) ---
+# upstream の .gitignore と同じ方針。セルフテストの合成データも含む。
+scratch/
+sessions/
+*.raw
+*.dcm
+*.dicom
+*.nii
+*.nii.gz
+*.stl
+phantom_data/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# --- OS / エディタ ---
+.DS_Store
+.idea/
+.vscode/

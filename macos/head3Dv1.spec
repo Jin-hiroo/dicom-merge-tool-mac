@@ -26,6 +26,8 @@ if not (UPSTREAM / "app" / "main.py").exists():
 
 # collect_submodules("app") が元コードを見つけられるように
 sys.path.insert(0, str(UPSTREAM))
+sys.path.insert(0, str(ROOT / "macos"))
+from check_bundle import inspect as macho_info  # noqa: E402
 
 
 def upstream_commit() -> str:
@@ -34,6 +36,20 @@ def upstream_commit() -> str:
             ["git", "-C", str(UPSTREAM), "rev-parse", "HEAD"], text=True).strip()
     except (OSError, subprocess.CalledProcessError):
         return "unknown"
+
+
+def minimum_macos(binaries) -> str:
+    """同梱バイナリが要求する最も新しい macOS (LC_BUILD_VERSION の minos)。
+
+    依存のホイールはビルドした Mac の OS に合わせて選ばれる (例: SciPy は
+    macOS 14 以上なら 14.0 向けのホイールになる) ので、固定値にせず実物から決める。
+    """
+    newest = (11, 0, 0)                 # Apple Silicon 対応の最初の macOS
+    for _dest, src, _kind in binaries:
+        info = macho_info(Path(src))
+        if info and info[1]:
+            newest = max(newest, info[1])
+    return f"{newest[0]}.{newest[1]}"
 
 
 a = Analysis(
@@ -96,6 +112,8 @@ coll = COLLECT(
 )
 
 if sys.platform == "darwin":
+    min_macos = minimum_macos(a.binaries)
+    print(f"LSMinimumSystemVersion: {min_macos} (同梱バイナリの minos から決定)")
     usage = ("DICOM フォルダの読み込みと、STL / DICOM / セッションの書き出しに使います。"
              "データはこの Mac の中だけで処理され、外部には送信されません。")
     app = BUNDLE(
@@ -111,7 +129,7 @@ if sys.platform == "darwin":
             "CFBundleShortVersionString": VERSION,
             "CFBundleDevelopmentRegion": "ja",
             "LSApplicationCategoryType": "public.app-category.medical",
-            "LSMinimumSystemVersion": "12.0",
+            "LSMinimumSystemVersion": min_macos,
             "NSHighResolutionCapable": True,
             "NSHumanReadableCopyright": "研究・造形補助用。診断用医療機器ではありません。",
             "NSDesktopFolderUsageDescription": usage,

@@ -17,7 +17,9 @@ git サブモジュールとして（コミットを固定して）読み込み�
 ## 動作環境
 
 - Apple Silicon (M1 / M2 / M3 …) の Mac
-- macOS 12 Monterey 以降
+- macOS 14 Sonoma 以降（GitHub Actions で作った DMG の場合。同梱の SciPy が macOS 14 向けのため）
+  - 対応する最小 macOS は、同梱したライブラリが要求する版から自動で決まり、Info.plist に書き込まれます。
+    macOS 13 以前の Mac で自分でビルドすると、その Mac 向けのライブラリが選ばれるため、その Mac で動きます
 - メモリ 16 GB 以上を推奨（元ツールと同じ）
 
 ## インストール

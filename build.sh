@@ -10,7 +10,7 @@
 #   PYTHON       venv の作成に使う Python 3.12 (既定: 自動検出)
 #   APP_VERSION  アプリのバージョン (既定: 1.0.0)
 #
-# 成果物: dist/head3Dv1.app, dist/head3Dv1-<version>-arm64.dmg
+# 成果物: dist/head3Dv1.app, dist/head3Dv1-<version>-arm64.dmg (+ .sha256)
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -136,6 +136,8 @@ if [[ "$SKIP_DMG" == 0 ]]; then
     echo "hdiutil に失敗しました。再試行します ($attempt/3)"
     sleep 5
   done
+  # アプリ内アップデートはこのチェックサムで改ざん・破損を検出する
+  (cd "$(dirname "$DMG")" && shasum -a 256 "$(basename "$DMG")" > "$(basename "$DMG").sha256")
   du -sh "$DMG"
 fi
 

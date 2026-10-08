@@ -3,3 +3,7 @@ pyinstaller>=6.10,<7
 pyinstaller-hooks-contrib>=2024.8
 Pillow>=10          # アイコン生成 (pydicom の JPEG 展開にも使われる)
 pytest>=8.0
+# アップデート確認の HTTPS 検証。truststore は macOS のキーチェーン (院内プロキシの
+# 証明書を含む) を使い、使えない場合は certifi の証明書にフォールバックする。
+truststore>=0.9
+certifi>=2024.0

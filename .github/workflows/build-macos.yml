@@ -46,6 +46,11 @@ jobs:
       - name: Build, self-test, check and package
         run: PYTHON="$(command -v python)" ./build.sh
 
+      - name: Update self-test (TLS to GitHub, DMG -> swap)
+        run: |
+          dist/head3Dv1.app/Contents/MacOS/head3Dv1 --self-test-update \
+            --dmg "dist/head3Dv1-${APP_VERSION}-arm64.dmg"
+
       - name: Launcher tests
         run: .venv-build/bin/python -m pytest tests -q -p no:cacheprovider
 
@@ -62,7 +67,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: head3Dv1-arm64
-          path: dist/*.dmg
+          path: |
+            dist/*.dmg
+            dist/*.dmg.sha256
           if-no-files-found: error
           retention-days: 30
 
@@ -87,5 +94,7 @@ jobs:
           path: dist
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.dmg
+          files: |
+            dist/*.dmg
+            dist/*.dmg.sha256
           generate_release_notes: true

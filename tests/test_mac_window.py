@@ -46,11 +46,15 @@ def _buttons(n, width=100):
 
 def test_flow_layout_sizes(qapp):
     host, flow = _buttons(5)
-    assert flow.sizeHint().width() == 5 * 100 + 4 * 10       # 1 行に並べた幅
-    assert flow.minimumSize().width() == 100                 # 1 項目が入れば良い
-    one_row = flow.heightForWidth(600)
-    two_rows = flow.heightForWidth(320)                       # 3 個 + 2 個
-    five_rows = flow.heightForWidth(100)
+    # レイアウト上の項目幅はスタイル次第 (macOS ではボタンの枠の外側の余白を除いた
+    # 88px になる) なので、固定値ではなく項目の値から期待値を出す
+    item_w = flow.itemAt(0).sizeHint().width()
+    assert 0 < item_w <= 100
+    assert flow.sizeHint().width() == 5 * item_w + 4 * 10                # 1 行に並べた幅
+    assert flow.minimumSize().width() == flow.itemAt(0).minimumSize().width()  # 1 項目分
+    one_row = flow.heightForWidth(5 * item_w + 4 * 10)
+    two_rows = flow.heightForWidth(3 * item_w + 2 * 10 + 5)              # 3 個 + 2 個
+    five_rows = flow.heightForWidth(item_w)
     assert one_row < two_rows < five_rows
 
 

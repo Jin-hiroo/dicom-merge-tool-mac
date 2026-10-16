@@ -1,10 +1,34 @@
 # head3Dv1 for macOS
 
-[dicom-merge-tool](https://github.com/Jin-hiroo/dicom-merge-tool)（head3Dv1 — DICOM 結合支援ツール）を、
-ダブルクリックで起動できる macOS アプリ **`head3Dv1.app`** にするためのリポジトリです。
+**分けて撮った CT を手で位置合わせして 1 つにつなぎ、3D プリント用の STL や DICOM として書き出せる Mac アプリ。**
+Python の環境構築は要らず、ダブルクリックで起動できます。
 
-**元のリポジトリとコードには一切手を加えていません。** 元コードは `upstream/` に
-git サブモジュールとして（コミットを固定して）読み込み、そのままアプリに同梱します。
+[![Build macOS app](https://github.com/Jin-hiroo/dicom-merge-tool-mac/actions/workflows/build-macos.yml/badge.svg)](https://github.com/Jin-hiroo/dicom-merge-tool-mac/actions/workflows/build-macos.yml)
+[![Latest release](https://img.shields.io/github/v/release/Jin-hiroo/dicom-merge-tool-mac)](https://github.com/Jin-hiroo/dicom-merge-tool-mac/releases/latest)
+[![macOS 14+ · Apple Silicon](https://img.shields.io/badge/macOS-14%2B%20%C2%B7%20Apple%20Silicon-000000?logo=apple)](#動作環境)
+[![License: MIT](https://img.shields.io/github/license/Jin-hiroo/dicom-merge-tool-mac)](LICENSE)
+
+[ダウンロード](https://github.com/Jin-hiroo/dicom-merge-tool-mac/releases/latest) ·
+[使い方](#使い方) ·
+[詳しい操作（元リポジトリ）](https://github.com/Jin-hiroo/dicom-merge-tool#使い方) ·
+[自分でビルドする](#自分でビルドする) ·
+[トラブルシューティング](#トラブルシューティング)
+
+<p>
+  <a href="docs/images/printed-skull.jpg"><img src="docs/images/printed-skull.jpg" alt="机の上で黒い台座に載った、白い樹脂で 3D プリントした頭蓋骨" height="340"></a>
+  <a href="docs/images/merged-skull-3d.jpg"><img src="docs/images/merged-skull-3d.jpg" alt="アプリの 3D ビューに正面から表示した、結合後の頭蓋骨" height="340"></a>
+</p>
+
+_左: 頭部 CT の 3 シリーズをこのアプリで 1 つに結合し、書き出した STL を 3D プリントしたもの（黒い台座はアプリの出力ではありません）。
+右: 同じ結合結果をアプリの 3D ビューで正面から見たところ。額を横切る線が、シリーズをつないだ継ぎ目です。_
+
+<p>
+  <a href="docs/images/align-before.jpg"><img src="docs/images/align-before.jpg" alt="位置合わせ前: 水色の頭頂部のシリーズが、ベージュの頭蓋骨と向きも位置もずれて重なっている" height="300"></a>
+  <a href="docs/images/align-after.jpg"><img src="docs/images/align-after.jpg" alt="位置合わせ後: 水色の頭頂部がベージュの頭蓋骨の上に載っている" height="300"></a>
+</p>
+
+_同じ CT を横から見た位置合わせの前後。ベージュが基準のシリーズ（Fixed。先に 2 本を結合したもの）、水色が動かすシリーズ（Moving。頭頂部）。
+左: 読み込んだ直後。DICOM の座標のままでは向きも位置も合っていません。右: 移動と回転のボタンで合わせた後。_
 
 > **本ソフトウェアは診断用医療機器ではありません。**
 > 研究・造形補助を目的としたツールであり、臨床診断には使用しないでください。
@@ -12,9 +36,35 @@ git サブモジュールとして（コミットを固定して）読み込み�
 > （アプリ版がネットワークに接続するのは、メニューから「アップデートを確認…」を選んだときに
 > GitHub へ最新版を問い合わせる場合だけです。患者データやファイルの情報は送りません。）
 
-使い方（読込 → 位置合わせ → 結合 → 書出し）は
-[元リポジトリの README](https://github.com/Jin-hiroo/dicom-merge-tool#使い方) を参照してください。
-アプリ版でも操作はまったく同じです。
+このリポジトリは、[dicom-merge-tool](https://github.com/Jin-hiroo/dicom-merge-tool)（head3Dv1 — DICOM 結合支援ツール）を
+ダブルクリックで起動できる macOS アプリ **`head3Dv1.app`** にするためのものです。
+**元のリポジトリとコードには一切手を加えていません。** 元コードは `upstream/` に
+git サブモジュールとして（コミットを固定して）読み込み、そのままアプリに同梱します。
+
+## 特長
+
+1 回で撮りきれずに複数のシリーズに分かれた CT は、そのままでは 1 つの模型にできません。
+head3Dv1 では重なった部分を見ながら手で位置を合わせ、1 つのボリュームに結合してから書き出します。
+
+- **何本でも順につなげる。** 2 本を結合すると結果が次の基準（Fixed）になり、3 本目以降も同じ手順で足していけます。
+- **mm 単位で追い込める手動の位置合わせ。** 移動（X/Y/Z）と回転（Roll/Pitch/Yaw）のボタンや矢印キーで動かし、
+  2D 断面の重ね合わせ（Fixed = グレー / Moving = 赤）と「重なり誤差」の数値で確かめます。
+  ボタン操作ではメッシュを作り直さないので、すぐに反映され、Undo / Redo もできます。
+- **3D プリント用の STL と、ビューアで開ける DICOM。** STL は書き出すときにフル解像度でメッシュ化します。
+  DICOM は派生データ（`DERIVED / SECONDARY`）として新しいフォルダに書き出すので、3D Slicer や PACS ビューアで開けます。
+  書き出して読み戻すと HU 値まで一致することを、元リポジトリのテストで確かめています。
+- **16 GB の Mac で大きな CT を扱える。** ボリュームは `int16` の memmap に置いて RAM に全部は載せず、
+  結合も Z 方向に分けて処理します。元リポジトリの実測では、Apple M2 / 16 GB で 512×512×600 を 2 本結合して 1.6 秒、
+  STL 書き出し（200 万三角形）が 20.5 秒です。
+- **重い処理の間も操作できる。** 読み込み・結合・書き出しは別スレッドで動き、進捗表示とキャンセルがあります。
+- **作業が消えない。** 終了時に自動保存し、次に起動したときに復元できます。時間をかけた位置合わせと結合結果も戻ります。
+- **普通の Mac アプリとして使える。** 13〜14 インチの画面にも収まり、作業データは iCloud で同期されない
+  `~/Library/Application Support/head3Dv1/` に置きます。メニューからアップデートでき、ダウンロードは SHA-256 で照合します。
+
+<a href="docs/images/app-window.jpg"><img src="docs/images/app-window.jpg" alt="head3Dv1 のメインウィンドウ。左にシリーズ一覧、中央に 3D ビューと 2D 断面の重ね合わせ、右に閾値・位置合わせ・結合と書き出しのパネル"></a>
+
+_上と同じ位置合わせの途中のメインウィンドウ。左: シリーズ一覧（シリーズ名は伏せてあります）。
+中央: 3D ビューと 2D 断面の重ね合わせ。右: HU 閾値、位置合わせ（移動・回転のボタンと数値）、結合と書き出し。_
 
 ## 動作環境
 
@@ -26,11 +76,20 @@ git サブモジュールとして（コミットを固定して）読み込み�
 
 ## インストール
 
-1. `head3Dv1-<バージョン>-arm64.dmg` を開く
-   （GitHub の [Actions](../../actions) の成果物 `head3Dv1-arm64`、またはタグを打った場合は Releases から入手。
+[最新のリリース](https://github.com/Jin-hiroo/dicom-merge-tool-mac/releases/latest)から DMG を入れます。設定は要りません。
+
+1. `head3Dv1-<バージョン>-arm64.dmg`（約 180 MB）をダウンロードして開く
+   （GitHub の [Actions](../../actions) の成果物 `head3Dv1-arm64` でも入手できます。
    自分でビルドした場合は `dist/` にあります）
 2. `head3Dv1` を `Applications` フォルダへドラッグ
 3. Launchpad または `/Applications/head3Dv1.app` から起動
+
+ソースからビルドする場合は（Python 3.12 が必要。詳しくは[自分でビルドする](#自分でビルドする)）:
+
+```bash
+git clone --recursive https://github.com/Jin-hiroo/dicom-merge-tool-mac.git
+cd dicom-merge-tool-mac && ./build.sh
+```
 
 ### 初回起動で「開けません」と出た場合
 
@@ -48,6 +107,30 @@ git サブモジュールとして（コミットを固定して）読み込み�
 
 DICOM をデスクトップ・書類・USB / CD などから読むときに、macOS がフォルダへの
 アクセス許可を求めることがあります。［許可］してください。
+
+## 使い方
+
+重なりのある CT シリーズを 2 本以上用意して、次の順に操作します。
+
+1. **DICOM フォルダを追加…** でフォルダを選ぶ（中を走査して CT シリーズを見つけます）
+2. 1 本目を選んで **読み込む**（自動で Fixed になります）。2 本目も読み込んで **Moving に設定**
+3. 移動・回転のボタンで Moving を動かし、下の 2D 重ね合わせとフッターの **重なり誤差** を見ながら合わせる
+4. **結合を実行**。結果が一覧に増えて次の Fixed になるので、3 本目以降は 2〜4 を繰り返す
+5. **STL を書き出す…**（3D プリント用）または **DICOM を書き出す…**（ビューア用）
+
+HU 閾値・表示色・プレビューモード・セッションの保存など、詳しい操作は
+[元リポジトリの README](https://github.com/Jin-hiroo/dicom-merge-tool#使い方) を参照してください。
+アプリ版でも操作はまったく同じです。
+
+手元に DICOM が無いときは、`./build.sh` で作られる `.venv-build/` を使って合成データ（ずれを仕込んだ 2 シリーズ）を作れます。
+指定したフォルダは中身ごと作り直されるので、新しいフォルダを指定してください。
+
+```bash
+.venv-build/bin/python upstream/tests/make_phantom.py /tmp/head3dv1-phantom
+```
+
+`/tmp/head3dv1-phantom` を **DICOM フォルダを追加…** で選ぶと、`PHANTOM A (lower)` と `PHANTOM B (upper)` が一覧に出ます。
+
 
 ## アップデート
 
@@ -134,6 +217,7 @@ dicom-merge-tool-mac/
 │   ├── make_icon.py          アイコン生成
 │   └── check_bundle.py       ビルド後のバンドル検査
 ├── tests/                    ランチャー・ウィンドウ・アップデートのテスト
+├── docs/images/              README の写真とスクリーンショット
 ├── build.sh                  ビルド一式
 └── .github/workflows/        GitHub Actions (macOS arm64 で DMG を作る)
 ```
